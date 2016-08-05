@@ -1,5 +1,7 @@
 package funnyspider;
 
+
+
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
@@ -20,7 +22,7 @@ public class SpiderApp {
 	
 	//App线程数
 	private int threadNum = 1; 
-	private int maxThreadNum = 10;
+	private int maxThreadNum = 20;
 	
 	//总共访问的次数
 	private int pageNum = 1;
@@ -35,8 +37,6 @@ public class SpiderApp {
 	//http get或post的数据
 	private HashMap<String,String> datas = null;
 	
-	//是否为守护线程
-	private boolean isDaemo = false;
 	
 	//默认编码
 	private String charset = "utf-8";
@@ -138,16 +138,6 @@ public class SpiderApp {
 		return this;
 	}
 	
-	/**
-	 * 设置是否为守护线程
-	 * @param flag 
-	 * @return this
-	 */
-	
-	public SpiderApp setThreadDemo(boolean flag){
-		isDaemo = flag;
-		return this;
-	}
 
 	
 	/**
@@ -232,73 +222,99 @@ public class SpiderApp {
 	}
 	
 	
+	/**
+	 * 根据响应码处理对于流程
+	 * @param code
+	 * @param hr
+	 * @param sInfo
+	 * @param conn
+	 * @throws Exception
+	 */
+	private void dealWithCode(int code,HttpRequest hr,SpiderInfo sInfo,HttpURLConnection conn)
+		throws Exception{
+		String content = new String();
+		//响应报文
+        if(HttpURLConnection.HTTP_OK == code){
+        	//200响应
+        	content = hr.getBody(charset);
+        	contentHandle.cHandle(sInfo,content);
+        	if(pageNum >1){
+        		String[]  urls = jumpHandle.jHandle(sInfo,content);
+        		if (urls!=null){
+        			for(String next_url:urls){
+        				//添加至任务队列
+        				mission.add(next_url);
+        			}
+        		}else{
+        			throw new IllegalArgumentException("jumpHandle can't return null");
+        		}
+        	}
+        }else if (code == HttpURLConnection.HTTP_MOVED_TEMP
+    			|| code == HttpURLConnection.HTTP_MOVED_PERM
+				|| code == HttpURLConnection.HTTP_SEE_OTHER){
+        	//重定向
+        	String newUrl = conn.getHeaderField("Location");
+        	//重定向插队至第一位
+        	LinkedList<String> temp = (LinkedList<String>)mission;
+        	temp.add(0, newUrl);
+        	mission = temp;	
+        }else{
+        	//非200
+        	badRequestHandle.bHandle(sInfo,code);
+        }
+
+	}
+	
+	/**
+	 * 根据url访问
+	 * @param targetUrl
+	 * @param conn
+	 * @param second
+	 */
+	private void catchUrl(String targetUrl,int second){
+		String now_url = targetUrl;
+		HttpURLConnection conn = null;
+		SpiderInfo sInfo = SpiderInfo.createInfoBlock(now_url, pageNum);
+		try{
+			if(nowNum == 1 || flag){
+				berforeReaquestHandle.brHandle(sInfo);
+				this.cookie = sInfo.getCookie();
+			}
+			if(visited.contains(now_url)){
+				return;
+			}
+			visted(now_url);
+			HttpRequest hr = new HttpRequest(now_url);
+			hr.setCookie(cookie);
+			conn = hr.open(parms,datas,second);
+	        int code = conn.getResponseCode();
+	        dealWithCode(code, hr, sInfo, conn);
+		}catch(Exception err){
+			errHandle.handle(err);
+		}
+	}
 	
 	
 	/**
 	 * 
-	 * @param charset
 	 * @param second
 	 */
-	private void go(String charset,int second){
-		
-		String content = new String();
-		HttpURLConnection conn = null;
-		
-		while(!mission.isEmpty() && nowNum<=pageNum){
-			String now_url = mission.poll();
-			//循环遍历任务队列
-			SpiderInfo sInfo = SpiderInfo.createInfoBlock(now_url, pageNum);
-			try{
-				if(nowNum == 1 || flag){
-					berforeReaquestHandle.brHandle(sInfo);
-					this.cookie = sInfo.getCookie();
+	private void go(int second){
+		String targetUrl = "";
+		synchronized (this) {
+			targetUrl = mission.poll();
+			if(null!=targetUrl){
+				catchUrl(targetUrl,second);
+		        try {
+					Thread.sleep(sleepTime*1000);
+				} catch (InterruptedException e) {
+					e.printStackTrace(System.err);
 				}
-				if(visited.contains(now_url)){
-					continue;
-				}
-				visted(now_url);
-				HttpRequest hr = new HttpRequest(now_url);
-				hr.setCookie(cookie);
-				conn = hr.open(parms,datas,second);
-		        int code = conn.getResponseCode();
-		       
-		        //响应报文
-		        if(HttpURLConnection.HTTP_OK == code){
-		        	//200响应
-		        	content = hr.getBody(charset);
-		        	contentHandle.cHandle(sInfo,content);
-		        	if(pageNum >1){
-		        		String[]  urls = jumpHandle.jHandle(sInfo,content);
-		        		if (urls!=null){
-		        			for(String next_url:urls){
-		        				//添加至任务队列
-		        				mission.add(next_url);
-		        			}
-		        		}else{
-		        			throw new IllegalArgumentException("jumpHandle can't return null");
-		        		}
-		        	}
-		        }else if (code == HttpURLConnection.HTTP_MOVED_TEMP
-		    			|| code == HttpURLConnection.HTTP_MOVED_PERM
-						|| code == HttpURLConnection.HTTP_SEE_OTHER){
-		        	//重定向
-		        	String newUrl = conn.getHeaderField("Location");
-		        	//重定向插队至第一位
-		        	LinkedList<String> temp = (LinkedList<String>)mission;
-		        	temp.add(0, newUrl);
-		        	mission = temp;	
-		        }else{
-		        	//非200
-		        	badRequestHandle.bHandle(sInfo,code);
-		        }
-		        Thread.sleep(sleepTime*1000);
-			}catch(Exception err){
-				errHandle.handle(err);
 			}
-			
+			notify();
 		}
+
 		
-	 
 	}
 	
 	
@@ -327,8 +343,8 @@ public class SpiderApp {
 			this.start();
 		}
 		
-		public void dec(){
-			aliveNum--;
+		public void dec(int number){
+			aliveNum-=number;
 		}
 		
 		@Override
@@ -351,6 +367,18 @@ public class SpiderApp {
 	}
 	
 	
+	//线程管理者
+	private Manager manager = null;
+	
+	
+	/**
+	* 爬虫初始化
+	*/
+	private void init(){
+		mission.add(url);	
+		manager =  new Manager(threadNum,url);
+	}
+	
 	
 	
 	
@@ -358,25 +386,44 @@ public class SpiderApp {
 	 * 启动爬虫
 	 * @param timeoutSecond 每次访问的timeout秒数
 	 */
-	public final void run(int timeoutSecond) {
-		mission.add(url);	
-		Manager ma =  new Manager(threadNum,url);
+	public final synchronized void run(int timeoutSecond) {
+		init();
 		if(threadNum > 1){
 			//多线程爬取
-			for(int i = 0;i<threadNum;i++){
-				Thread t = new Thread(){
-					@Override
-					public void run(){
-						go(charset,timeoutSecond);
-						ma.dec();
-					}
-				};
-				t.setDaemon(isDaemo);
-				t.start();
+			Runnable[] threads= null;
+			ThreadPool pool = ThreadPool.createPool(threadNum);
+			
+			int urlNum = 0;
+			while(!mission.isEmpty()&& nowNum<=pageNum){
+				threads = new Runnable[30];
+				for(int i = 0;(i<threads.length)&&(urlNum<pageNum);i++){;
+					//每增加一个线程，实际就是访问多一个url
+					threads[i] = new Runnable() {				
+						@Override
+						public void run() {
+							go(timeoutSecond);
+							System.out.println(" Name: "+ Thread.currentThread().getName());
+						}
+					};
+					urlNum++;
+				}
+				pool.exe(threads);
+				threads = null;
+				
+				try {
+					//防止mission的判空出错
+					wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace(System.err);
+				}
 			}
+			pool.destory();
+			manager.dec(threadNum);
 		}else{
-			go(charset,timeoutSecond);
-			ma.dec();
+			while(!mission.isEmpty()&& nowNum<=pageNum){
+				go(timeoutSecond);
+			}
+			manager.dec(1);
 		}
 	}
 	

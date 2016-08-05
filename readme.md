@@ -3,6 +3,10 @@
 
 ---
 
+![logo](pic/logo.jpg)
+
+---
+
 ##简介
 FunnySpider是支持以下功能爬虫框架
 

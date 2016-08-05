@@ -8,7 +8,7 @@ import java.io.IOException;
 /**
  * 爬虫管理类
  */
-public class SpiderManager {
+class SpiderManager {
 
 	private static String fatherDir = "temp";
 	
