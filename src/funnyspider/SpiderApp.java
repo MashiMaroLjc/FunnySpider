@@ -69,6 +69,10 @@ public class SpiderApp {
 	//cookie
 	private String cookie = null;
 	
+	
+
+	
+	
 	/**
 	 * 构造方法
 	 * @param url
@@ -402,7 +406,6 @@ public class SpiderApp {
 						@Override
 						public void run() {
 							go(timeoutSecond);
-							System.out.println(" Name: "+ Thread.currentThread().getName());
 						}
 					};
 					urlNum++;

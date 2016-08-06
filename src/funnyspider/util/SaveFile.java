@@ -1,4 +1,4 @@
-﻿package funnyspider.util;
+package funnyspider.util;
 
 
 
