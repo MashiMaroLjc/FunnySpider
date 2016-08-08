@@ -1,6 +1,9 @@
 package funnyspider;
 
 import java.io.IOException;
+import java.io.PrintStream;
+
+import org.apache.log4j.Logger;
 
 
 /**
@@ -12,23 +15,52 @@ public class SpiderInfo {
 	private  static String begUrl = null;
 	private static SpiderInfo self = null;
 	
+	private static Logger logger = null;
+	
 	/**
 	 * 单例创造信息块，第一次创立记录，第二次创立则页数自动加一,更新当前url
 	 * @param url 当前访问的url
 	 * @param allPageNum 全部页数
 	 */
-	protected synchronized static SpiderInfo createInfoBlock(String url,int allPageNum){
+	protected synchronized static SpiderInfo createInfoBlock(String url,int allPageNum,int nowPageNum){
 		if(self == null){
 			self = new SpiderInfo(url, allPageNum, 1);
 			self.setBegUrl(url);
 			return self;
 		}else{
 			nowPageNum += 1;
+			SpiderInfo.nowPageNum = nowPageNum;
 			self.setUrl(url);
 			return self;
 		}
 	}
 	
+
+	
+	/**
+	 * 设置日志标志
+	 * @return
+	 */
+	protected static void setLogger(Logger log){
+		logger = log;
+	}
+	
+	
+	/**
+	 * 如果设置了日志，则往日志里输出，否则向输出流里输出
+	 * @param message
+	 */
+	public void outputMessage(Object message,PrintStream stream){
+		if(null!=logger){
+			if(stream.equals(System.err)){
+				logger.error(message);
+			}else{
+				logger.info(message);
+			}
+		}else{
+			stream.println(message);
+		}
+	}
 	
 	
 	private SpiderInfo(String url,int allPageNum,int nowPageNum){

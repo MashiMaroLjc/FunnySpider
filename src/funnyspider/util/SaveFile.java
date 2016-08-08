@@ -16,7 +16,6 @@ public class SaveFile implements ContentHandle {
 	private String charset = "utf-8";
 	
 	public SaveFile() {
-		// TODO Auto-generated constructor stub
 	}
 	
 	public SaveFile(String charset){
@@ -25,15 +24,13 @@ public class SaveFile implements ContentHandle {
 	
 	@Override
 	public void cHandle(SpiderInfo sinfo,String html) {
-		// TODO Auto-generated method stub
 		String filename = nameNum + ".html";
 		try {
 			Download.saveString(html, filename,charset);
 			nameNum += 1;
-			System.out.println(filename +" --------------> 下载成功");
+			sinfo.outputMessage(filename +" --------------> 下载成功",System.out);
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace(System.err);
+			sinfo.outputMessage(e.getMessage(),System.err);
 		}
 	}
 

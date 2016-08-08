@@ -9,7 +9,6 @@ import funnyspider.SpiderInfo;
 public class BadRequestDealWith implements BadRequestHandle {
 	@Override
 	public void bHandle(SpiderInfo spiderInfo,int code) {
-		System.out.print(spiderInfo.getUrl() + "  访问失败    错误码: ");
 		String reason = "Unknown";
 		switch (code){
 		case 304:
@@ -34,9 +33,8 @@ public class BadRequestDealWith implements BadRequestHandle {
 		case 504:
 			reason = "Server error";
 		}
-		System.err.println(code + "  " + reason);
-		
-		
+		spiderInfo.outputMessage(spiderInfo.getUrl() + " reason:" +  reason,
+				System.err);	
 	}
 
 }

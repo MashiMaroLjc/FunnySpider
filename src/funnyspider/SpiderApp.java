@@ -2,11 +2,27 @@ package funnyspider;
 
 
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Queue;
+import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.FileAppender;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.log4j.PropertyConfigurator;
+import org.apache.log4j.SimpleLayout;
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
 
 import funnyspider.util.*;
 import funnyspider.util.net.HttpRequest;
@@ -30,7 +46,8 @@ public class SpiderApp {
 	
 	//爬虫休眠参数
 	private int sleepTime = 1;
-	
+	//爬虫访问超时限制
+	private int timeout = 5;
 	//http头部参数
 	private HashMap<String,String> parms = null;
 	
@@ -64,15 +81,90 @@ public class SpiderApp {
 	//在请求前进行预处理
 	private BeforeReuqestHandle berforeReaquestHandle = new BeforeRequestDealWith();
 	
+	//设置是否周期序列化爬虫至spiderjson文件
+	private boolean tojson = false;
+	private String jsonFileName = "spider.json";
 	
 	
 	//cookie
 	private String cookie = null;
 	
+	//日志相关设置
+	private Logger logger = null;   
+	private String logName = "spider.log";
+	private boolean logAppend = true;
+	
+	
+	private Level getLogLevel(int level){
+		switch (level) {
+		case 0:
+			return Level.OFF;
+		case 1:
+			return Level.FATAL ;
+		case 2:
+			return Level.ERROR;
+		case 3:
+			return Level.WARN;
+		case 4:
+			return Level.INFO;
+		case 5:
+			return Level.DEBUG;
+		case 6:
+			return Level.ALL;
+		default:
+			System.err.println("set log level error.It default level is All");
+			return Level.ALL;
+		}
+	}
+	private Map<String,Object> logMap = new HashMap<>();
+	/**
+	 * 设置日志配置
+	 * @param level
+	 * @param fileName
+	 * @param append
+	 * @return this
+	 */
+	public SpiderApp setLogerConfig(int level,String fileName,boolean append,String configFilename){
+		logMap.put("level", level);
+		logMap.put("fileName", fileName);
+		logMap.put("append",append);
+		logMap.put("configFilename",configFilename);
+		logger = Logger.getLogger(SpiderApp.class);
+		Level logLevel = getLogLevel(level);
+		try {
+			FileAppender appender = new FileAppender(new SimpleLayout(), fileName,append);
+			if(null == configFilename){
+				BasicConfigurator.configure();
+			}else{
+				PropertyConfigurator.configure(configFilename);
+			}
+			logger.addAppender(appender);
+			logger.setLevel(logLevel);
+		} catch (IOException e) {
+			e.printStackTrace(System.err);
+		} 
+		return this;
+	}
+	
+	/**
+	 * 只配置日志信息等级，其他使用默认配置
+	 * 默认记录在spider.log文件，日志以追加的形式写入，其余使用log4j的默认配置
+	 * @param level
+	 * @return
+	 */
+	
+	public SpiderApp setLogerConfig(int level){
+		return setLogerConfig(level,logName,logAppend,null);
+	}
+	
+	/**
+	 * 构造方法
+	 */
+	public SpiderApp(){
+		
+	}
 	
 
-	
-	
 	/**
 	 * 构造方法
 	 * @param url
@@ -81,6 +173,26 @@ public class SpiderApp {
 		this.url = url;
 	}
 		
+	public SpiderApp setToJSON(boolean flag){
+		return setToJSON(flag,null);
+	}	
+	
+	public SpiderApp setToJSON(boolean flag,String fileName){
+		if(null!=fileName){
+			jsonFileName = fileName;
+		}
+		tojson = flag;
+		return this;
+	}
+	
+	
+	private void setVisted(Queue<String> visited){
+		this.visited =  visited;
+	}
+	
+	private void setMission(Queue<String> mission){
+		this.mission = mission;
+	}
 	
 	
 	/**
@@ -88,7 +200,7 @@ public class SpiderApp {
 	 * @param datas
 	 * @return this
 	 */
-	public SpiderApp setMethodDatas(HashMap<String,String> datas){
+	public SpiderApp setDatas(HashMap<String,String> datas){
 		this.datas = datas;
 		return this;
 	}
@@ -103,6 +215,11 @@ public class SpiderApp {
 	}
 	
 	
+	public SpiderApp setTimeout(int second){
+		timeout = second;
+		return this;
+	}
+	
 	/**
 	 * 获取爬取页数
 	 * @return pageNum
@@ -113,7 +230,7 @@ public class SpiderApp {
 	
 	/**
 	 * 设置线程数，超出指定范围无效
-	 * @param num 线程数[1,10]
+	 * @param num 线程数[1,20]
 	 */
 	public final SpiderApp setThreadNum(int num){
 		if (num <= maxThreadNum && num >=1){
@@ -226,6 +343,10 @@ public class SpiderApp {
 	}
 	
 	
+	public boolean getJsonFlag(){
+		return tojson;
+	}
+	
 	/**
 	 * 根据响应码处理对于流程
 	 * @param code
@@ -236,6 +357,9 @@ public class SpiderApp {
 	 */
 	private void dealWithCode(int code,HttpRequest hr,SpiderInfo sInfo,HttpURLConnection conn)
 		throws Exception{
+		if(null!=logger){
+			logger.info(sInfo.getUrl() + " code: "  + code );
+		}
 		String content = new String();
 		//响应报文
         if(HttpURLConnection.HTTP_OK == code){
@@ -275,10 +399,10 @@ public class SpiderApp {
 	 * @param conn
 	 * @param second
 	 */
-	private void catchUrl(String targetUrl,int second){
+	private void catchUrl(String targetUrl){
 		String now_url = targetUrl;
 		HttpURLConnection conn = null;
-		SpiderInfo sInfo = SpiderInfo.createInfoBlock(now_url, pageNum);
+		SpiderInfo sInfo = SpiderInfo.createInfoBlock(now_url, pageNum,nowNum);
 		try{
 			if(nowNum == 1 || flag){
 				berforeReaquestHandle.brHandle(sInfo);
@@ -290,11 +414,11 @@ public class SpiderApp {
 			visted(now_url);
 			HttpRequest hr = new HttpRequest(now_url);
 			hr.setCookie(cookie);
-			conn = hr.open(parms,datas,second);
+			conn = hr.open(parms,datas,timeout);
 	        int code = conn.getResponseCode();
 	        dealWithCode(code, hr, sInfo, conn);
 		}catch(Exception err){
-			errHandle.handle(err);
+			errHandle.handle(sInfo,err);
 		}
 	}
 	
@@ -303,12 +427,12 @@ public class SpiderApp {
 	 * 
 	 * @param second
 	 */
-	private void go(int second){
+	private void go(){
 		String targetUrl = "";
 		synchronized (this) {
 			targetUrl = mission.poll();
 			if(null!=targetUrl){
-				catchUrl(targetUrl,second);
+				catchUrl(targetUrl);
 		        try {
 					Thread.sleep(sleepTime*1000);
 				} catch (InterruptedException e) {
@@ -333,11 +457,13 @@ public class SpiderApp {
 		return this;
 	}
 	
+
+
 	
 	/**
 	 * 管理爬虫信息块的线程
 	 */
-	private  static class Manager extends Thread{
+	private class Manager extends Thread{
 		
 		private  int aliveNum = 0;
 		private String spiderBegUrl;
@@ -345,19 +471,57 @@ public class SpiderApp {
 			this.aliveNum = aliveNum;
 			this.spiderBegUrl = spiderBegUrl;
 			this.start();
+			
 		}
 		
 		public void dec(int number){
 			aliveNum-=number;
 		}
 		
+		
+		private void spider2Json(){
+			Map<String,Object> map = new HashMap<String,Object>();
+			Gson gson = new Gson();
+			map.put("notVisited", visited);
+			map.put("mission", mission);
+			map.put("threamNum", threadNum);
+			map.put("pageNum", pageNum);
+			map.put("nowNum", nowNum);
+			map.put("beforeFlag",flag);
+			map.put("tojson",tojson);
+			map.put("jsonFileName",jsonFileName);
+			map.put("cookie",cookie);
+			map.put("timeout",timeout);
+			map.put("sleepTime",sleepTime);
+			map.put("charset",charset);
+			map.put("logger",new Gson().toJson(logMap));
+			map.put("data",new Gson().toJson(datas));
+			map.put("parms",new Gson().toJson(parms));	
+			String jsonStr = gson.toJson(map);
+			try {
+				FileWriter out = new FileWriter(jsonFileName);
+				if(out != null){
+					out.write(jsonStr);
+					out.flush();
+					out.close();
+				}
+			} catch (IOException e) {
+				e.printStackTrace(System.err);
+			}
+		}
+		
 		@Override
 		public void run(){	
+			
 			while(aliveNum >0){
 				try {
 					SpiderManager.dump(spiderBegUrl);
+					if(tojson){
+						spider2Json();						
+					}
 					Thread.sleep(2000);
 				} catch (Exception e) {
+					logger.error(e.getMessage());
 					e.printStackTrace(System.err);
 				}			
 			}
@@ -365,6 +529,7 @@ public class SpiderApp {
 			try {
 				SpiderManager.delete(spiderBegUrl);
 			} catch (IOException e) {
+				logger.error(e.getMessage());
 				e.printStackTrace(System.err);
 			}
 		}
@@ -379,18 +544,160 @@ public class SpiderApp {
 	* 爬虫初始化
 	*/
 	private void init(){
-		mission.add(url);	
+		if(url != null){
+			mission.add(url);
+		}
 		manager =  new Manager(threadNum,url);
+		if(null!=logger){
+			SpiderInfo.setLogger(logger);
+			logger.info("Begin url: " + url);
+			logger.info("PageNum: " + pageNum);
+			logger.info("ThreadNum: " + threadNum);
+			logger.info("Timeout: " + timeout);
+			logger.info("SleepTime: " + sleepTime);
+			logger.info("Spider start……");
+		}
 	}
 	
 	
+	/**
+	 * 根据json配置
+	 * @param json
+	 */
+	@SuppressWarnings("unchecked")
+	private void configure(JsonElement json){
+		
+		Type listType = new TypeToken<Map<String,Object>>() {
+        }.getType();
+		Map<String,Object> map = new Gson().fromJson(json, listType);
+		System.out.println(map);
+		Object value =  map.get("notVisited");
+		if(value != null){
+			Queue<String> queue = new LinkedList<>();
+			for(String t:(ArrayList<String>)value){
+				queue.add(t);
+			}
+			setVisted(queue);
+		}
+		value =  map.get("mission");
+		if(value != null){
+			Queue<String> queue = new LinkedList<>();
+			for(String t:(ArrayList<String>)value){
+				queue.add(t);
+			}
+			url = queue.poll();
+			setMission(queue);
+		}
+		value =  map.get("threamNum");
+		if(value != null){
+			int number = (int)Double.parseDouble(value.toString());
+			setThreadNum(number);
+		}
+		value =  map.get("pageNum");
+		if(value != null){
+			int number = (int)Double.parseDouble(value.toString());
+			System.out.println(number);
+			setPageNum(number);
+		}
+		value =  map.get("nowNum");
+		if(value != null){
+			int number = (int)Double.parseDouble(value.toString());
+			nowNum = number;
+		}
+		value =  map.get("beforeFlag");
+		if(value != null){
+			boolean temp = Boolean.parseBoolean(value.toString());
+			setFalg(temp);
+		}
+		value =  map.get("tojson");
+		if(value != null && map.get("jsonFileName")!= null){
+			boolean temp = Boolean.parseBoolean(value.toString());
+			setToJSON(temp,map.get("jsonFileName").toString());
+		}else if(value != null){
+			boolean temp = Boolean.parseBoolean(value.toString());
+			setToJSON(temp);
+		}
+		value = map.get("cookie");
+		if(value !=null){
+			this.cookie = value.toString();
+		}
+		value =  map.get("timeout");
+		if(value != null){
+			int number = (int)Double.parseDouble(value.toString());
+			setTimeout(number);
+		}
+		value =  map.get("sleepTime");
+		if(value != null){
+			int number = (int)Double.parseDouble(value.toString());
+			setSleepTime(number);
+		}
+		value = map.get("charset");
+		if(value !=null){
+			charset = value.toString();
+		}
+		value = map.get("logger");
+		if(value !=null){
+			JsonElement json2 = new JsonParser().parse(value.toString());
+			if(!json2.isJsonNull()){
+				Map<String,Object> data = new Gson().fromJson(json2, listType);
+				int level = (int)Double.parseDouble(data.get("level").toString());
+				String fileName = data.get("fileName").toString();
+				boolean append = Boolean.parseBoolean(data.get("append").toString());
+				Object configFilename = data.get("configFilename");
+				if(configFilename!=null){
+					setLogerConfig(level, fileName, append, configFilename.toString());
+				}else{
+					setLogerConfig(level, fileName, append,null);
+				}
+				
+			}
+		}
+		
+		value = map.get("data");
+		if(value != null){
+			JsonElement json2 = new JsonParser().parse(value.toString());
+			if(!json2.isJsonNull()){
+				Map<String,String> data = new Gson().fromJson(json2, listType);
+				setDatas((HashMap<String,String>)data);
+			}
+		}
+		
+		value = map.get("parms");
+		if(value != null){
+			JsonElement json2 = new JsonParser().parse(value.toString());
+			if(!json2.isJsonNull()){
+				Map<String,String>parm = new Gson().fromJson(json2, listType);
+				setHanderParms((HashMap<String,String>)parm);
+			}
+		}
+	}
 	
+	/**
+	 * 根据文件名载入配置
+	 * @param filename
+	 * @return
+	 */
+	public SpiderApp loadConfigure(String filename){
+		String result = "";
+		String line;
+		try {
+			BufferedReader in = new BufferedReader(new FileReader(filename));
+			while ((line = in.readLine()) != null) {
+			  result += line;
+			}
+			in.close();
+		} catch (IOException e) {
+			e.printStackTrace(System.err);
+		}
+		JsonElement json = new JsonParser().parse(result);
+		configure(json);
+		return this;
+	}
 	
 	/**
 	 * 启动爬虫
-	 * @param timeoutSecond 每次访问的timeout秒数
 	 */
-	public final synchronized void run(int timeoutSecond) {
+	public final synchronized void run() {
 		init();
 		if(threadNum > 1){
 			//多线程爬取
@@ -405,14 +712,13 @@ public class SpiderApp {
 					threads[i] = new Runnable() {				
 						@Override
 						public void run() {
-							go(timeoutSecond);
+							go();
 						}
 					};
 					urlNum++;
 				}
 				pool.exe(threads);
 				threads = null;
-				
 				try {
 					//防止mission的判空出错
 					wait();
@@ -424,7 +730,7 @@ public class SpiderApp {
 			manager.dec(threadNum);
 		}else{
 			while(!mission.isEmpty()&& nowNum<=pageNum){
-				go(timeoutSecond);
+				go();
 			}
 			manager.dec(1);
 		}

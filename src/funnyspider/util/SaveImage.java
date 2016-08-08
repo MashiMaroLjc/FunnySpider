@@ -18,9 +18,9 @@ public class SaveImage implements ContentHandle {
 			try {
 				Download.saveBinaryFromUrl(img, nameNum + "-" + subNum + ".jpg", null, 5);
 				subNum +=1;
-				System.out.println(img+" --------------> 下载成功");
+				sinfo.outputMessage(img +" --------------> 下载成功",System.out);
 			} catch (Exception e) {
-				e.printStackTrace(System.err);
+				sinfo.outputMessage(e.getMessage(),System.err);
 			}
 		}
 		nameNum += 1;

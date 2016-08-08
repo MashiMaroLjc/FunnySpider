@@ -67,7 +67,7 @@ public class Login implements BeforeReuqestHandle{
 				throw new NullPointerException("Set-Cookie is null");
 			}
 		}catch(Exception err){
-			System.err.println(err.getMessage());
+			spiderInfo.outputMessage(err.getMessage(), System.err);
 			spiderInfo.kill();
 		}
 	}

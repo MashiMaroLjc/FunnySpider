@@ -8,6 +8,6 @@ import funnyspider.SpiderInfo;
 public class ContentDealWith implements ContentHandle{
 	@Override
 	public void cHandle(SpiderInfo spiderInfo,String respondContent) {
-		System.out.println(spiderInfo.getUrl() + "  finish！");
+		spiderInfo.outputMessage(spiderInfo.getUrl() +" visited!", System.out);
 	}
 }
